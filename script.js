@@ -1,65 +1,148 @@
-body {
-    background-color: black;
-    color: white;
-    font-family: 'Roboto', sans-serif;
-    text-align: center;
-    margin: 0;
-    padding: 20px;
-}
-h1 {
-    margin-top: 20px;
-    text-shadow: 0 0 10px limegreen;
-}
-p {
-    margin-bottom: 20px;
-}
-.grid {
-    display: grid;
-    grid-template-columns: repeat(5, 100px);
-    grid-gap: 15px;
-    margin: 0 auto 20px;
-    width: fit-content;
-}
-.tile {
-    width: 100px;
-    height: 100px;
-    background: linear-gradient(135deg, #444, #222);
-    border-radius: 15px;
-    cursor: pointer;
-    position: relative;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.tile:hover { transform: scale(1.05); box-shadow: 0 0 15px rgba(255,255,255,0.5); }
-.tile.revealed { background: transparent; pointer-events: none; }
-.icon { width: 80%; height: 80%; object-fit: contain; }
-.gem .icon { animation: shine 1.5s infinite alternate ease-in-out; }
-@keyframes shine { 0% { filter: brightness(1) saturate(1);} 100% { filter: brightness(1.5) saturate(1.5);} }
-.bomb .icon { animation: shake 0.3s ease-in-out; }
-@keyframes shake {
-  0% { transform: translate(0,0); } 25% { transform: translate(-5px,5px);} 50% { transform: translate(5px,-5px);} 75% { transform: translate(-5px,5px);} 100% { transform: translate(0,0);}
-}
-.exploding .icon { animation: explode 0.8s forwards ease-in-out; }
-@keyframes explode { 0%{transform:scale(1);opacity:1;} 50%{transform:scale(1.3);opacity:1;filter:brightness(2);} 100%{transform:scale(1.5);opacity:0;} }
-.exploding::after {
-  content:'';
-  position:absolute;
-  top:0;left:0;width:100%;height:100%;
-  background: radial-gradient(circle, orange, transparent);
-  animation: burst 0.8s forwards;
-}
-@keyframes burst { 0%{transform:scale(0);opacity:1;} 100%{transform:scale(2);opacity:0;} }
+// script.js - robust Portals-safe version
+const diamondUrl = 'https://freepngimg.com/download/artificial_grass/56561-3-gem-download-hq-png.png';
+const bombUrl = 'https://cdn.pixabay.com/photo/2020/10/02/09/40/bomb-5620656_1280.png';
+const taskName = "Mines";
 
-.overlay {
-    position: fixed; top:0; left:0; width:100%; height:100%;
-    background: rgba(0,0,0,0.8);
-    display:flex; align-items:center; justify-content:center;
-    z-index:10; opacity:0; transition:opacity 0.5s;
-}
-.overlay.show { opacity:1; }
-.overlay h2 { font-size:60px; text-shadow:0 0 20px currentColor; animation:pulse 1.5s infinite alternate; }
-@keyframes pulse { 0%{transform:scale(1);}100%{transform:scale(1.1);} }
+let clicks = 0;
+let gameOver = false;
+let bombPositions = [];
 
-.hidden { display:none; }
+function isPortalsAvailable() {
+  return (typeof PortalsSdk !== 'undefined') && PortalsSdk && typeof PortalsSdk.sendMessageToUnity === 'function';
+}
+function canCloseIframe() {
+  return (typeof PortalsSdk !== 'undefined') && PortalsSdk && typeof PortalsSdk.closeIframe === 'function';
+}
+
+function sendTaskUpdate(state) {
+  const message = { TaskName: taskName, TaskTargetState: state };
+  const payload = JSON.stringify(message);
+
+  if (isPortalsAvailable()) {
+    try {
+      PortalsSdk.sendMessageToUnity(payload);
+      console.log('[Portals] sent:', payload);
+    } catch (e) {
+      console.warn('[Portals] sendMessageToUnity failed:', e);
+    }
+  } else {
+    // Portals SDK isn't here (running on GH Pages / browser). Log for debugging.
+    console.log('[Portals] SDK not available — would have sent:', payload);
+  }
+}
+
+function tryCloseIframe(delay = 2000) {
+  if (canCloseIframe()) {
+    setTimeout(() => {
+      try {
+        PortalsSdk.closeIframe();
+        console.log('[Portals] closeIframe called');
+      } catch (e) {
+        console.warn('[Portals] closeIframe threw:', e);
+      }
+    }, delay);
+  } else {
+    console.log('[Portals] closeIframe not available; skipping actual close.');
+  }
+}
+
+function newGame() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  clicks = 0;
+  gameOver = false;
+
+  const tiles = 25;
+  const numBombs = 3;
+  bombPositions = [];
+  while (bombPositions.length < numBombs) {
+    const pos = Math.floor(Math.random() * tiles);
+    if (!bombPositions.includes(pos)) bombPositions.push(pos);
+  }
+
+  for (let i = 0; i < tiles; i++) {
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.dataset.index = i;
+    tile.onclick = () => reveal(tile, bombPositions.includes(i));
+    grid.appendChild(tile);
+  }
+}
+
+function reveal(tile, isBomb) {
+  if (gameOver || tile.classList.contains('revealed')) return;
+  tile.classList.add('revealed');
+
+  if (isBomb) {
+    tile.innerHTML = `<img src="${bombUrl}" alt="bomb" class="icon">`;
+    tile.classList.add('bomb', 'exploding');
+    gameOver = true;
+    showOverlay('You Die!', 'red');
+
+    // Reveal other bombs
+    document.querySelectorAll('.tile').forEach(t => {
+      const idx = parseInt(t.dataset.index, 10);
+      if (bombPositions.includes(idx) && !t.classList.contains('revealed')) {
+        t.classList.add('revealed', 'bomb');
+        t.innerHTML = `<img src="${bombUrl}" alt="bomb" class="icon">`;
+      }
+    });
+
+    // Notify Portals and close after delay (if available)
+    sendTaskUpdate("SetAnyToCompleted");
+    tryCloseIframe(2000);
+
+  } else {
+    tile.innerHTML = `<img src="${diamondUrl}" alt="gem" class="icon">`;
+    tile.classList.add('gem');
+    clicks++;
+    if (clicks >= 15) {
+      gameOver = true;
+      showOverlay('You Win!', 'limegreen');
+
+      // Notify Portals and close after delay (if available)
+      sendTaskUpdate("SetNotActiveToActive");
+      tryCloseIframe(2000);
+    }
+  }
+}
+
+function showOverlay(text, color) {
+  const overlay = document.getElementById('overlay');
+  const msg = document.getElementById('message');
+  msg.textContent = text;
+  msg.style.color = color;
+  overlay.classList.remove('hidden');
+  // allow CSS transition to run
+  setTimeout(() => overlay.classList.add('show'), 10);
+}
+
+/* Safe initialization — no assumptions about being inside an iframe or having Portals loaded */
+window.addEventListener('load', () => {
+  // Only style the iframe element if it actually exists and is safe to change
+  if (window.top !== window.self && window.frameElement && window.frameElement.style) {
+    try {
+      const el = window.frameElement;
+      el.style.position = 'fixed';
+      el.style.top = '0';
+      el.style.left = '0';
+      el.style.width = '100vw';
+      el.style.height = '100vh';
+      el.style.border = 'none';
+      console.log('[frame] styled to fullscreen');
+    } catch (e) {
+      console.warn('[frame] styling failed', e);
+    }
+  } else {
+    console.log('[frame] not inside iframe or frameElement missing — skipping frame styling');
+  }
+
+  // Tell Portals the task should start Not Active if SDK is available
+  if (isPortalsAvailable()) {
+    sendTaskUpdate("ToNotActive");
+  } else {
+    console.log('[Portals] SDK not available on load — skipping ToNotActive message');
+  }
+
+  newGame();
+});
