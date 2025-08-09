@@ -79,8 +79,8 @@ function showOverlay(text, color) {
 }
 
 window.onload = () => {
-    // Only style iframe if running inside one
-    if (window.top !== window.self && window.frameElement) {
+    // Only try styling if inside an iframe AND the element exists
+    if (window.top !== window.self && window.frameElement && window.frameElement.style) {
         window.frameElement.style.position = 'fixed';
         window.frameElement.style.top = '0';
         window.frameElement.style.left = '0';
@@ -92,3 +92,10 @@ window.onload = () => {
     sendTaskUpdate("ToNotActive");
     newGame();
 };
+
+    }
+
+    sendTaskUpdate("ToNotActive");
+    newGame();
+};
+
