@@ -2,17 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Embedded YouTube Video</title>
+  <title>Fullscreen YouTube Video</title>
   <style>
-    body {
+    html, body {
       margin: 0;
-      padding: 20px;
-      font-family: sans-serif;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
     }
 
     iframe {
-      width: 640px;
-      height: 360px;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
       border: none;
     }
   </style>
